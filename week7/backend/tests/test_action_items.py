@@ -22,3 +22,13 @@ def test_create_complete_list_and_patch_action_item(client):
     assert patched["description"] == "Updated"
 
 
+def test_action_item_validation_and_bad_request(client):
+    r = client.post("/action-items/", json={"description": "   "})
+    assert r.status_code == 422
+
+    r = client.patch("/action-items/1", json={})
+    assert r.status_code == 422
+
+    r = client.get("/action-items/", params={"sort": "-unknown"})
+    assert r.status_code == 400
+

@@ -1,7 +1,8 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import asc, desc, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -9,14 +10,15 @@ from ..models import Note
 from ..schemas import NoteCreate, NotePatch, NoteRead
 
 router = APIRouter(prefix="/notes", tags=["notes"])
+ALLOWED_SORT_FIELDS = {"id", "title", "created_at", "updated_at"}
 
 
 @router.get("/", response_model=list[NoteRead])
 def list_notes(
     db: Session = Depends(get_db),
     q: Optional[str] = None,
-    skip: int = 0,
-    limit: int = Query(50, le=200),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     sort: str = Query("-created_at", description="Sort by field, prefix with - for desc"),
 ) -> list[NoteRead]:
     stmt = select(Note)
@@ -24,11 +26,10 @@ def list_notes(
         stmt = stmt.where((Note.title.contains(q)) | (Note.content.contains(q)))
 
     sort_field = sort.lstrip("-")
+    if sort_field not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_field}")
     order_fn = desc if sort.startswith("-") else asc
-    if hasattr(Note, sort_field):
-        stmt = stmt.order_by(order_fn(getattr(Note, sort_field)))
-    else:
-        stmt = stmt.order_by(desc(Note.created_at))
+    stmt = stmt.order_by(order_fn(getattr(Note, sort_field)))
 
     rows = db.execute(stmt.offset(skip).limit(limit)).scalars().all()
     return [NoteRead.model_validate(row) for row in rows]
@@ -36,11 +37,15 @@ def list_notes(
 
 @router.post("/", response_model=NoteRead, status_code=201)
 def create_note(payload: NoteCreate, db: Session = Depends(get_db)) -> NoteRead:
-    note = Note(title=payload.title, content=payload.content)
-    db.add(note)
-    db.flush()
-    db.refresh(note)
-    return NoteRead.model_validate(note)
+    try:
+        note = Note(title=payload.title, content=payload.content)
+        db.add(note)
+        db.flush()
+        db.refresh(note)
+        return NoteRead.model_validate(note)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create note") from exc
 
 
 @router.patch("/{note_id}", response_model=NoteRead)
@@ -48,14 +53,18 @@ def patch_note(note_id: int, payload: NotePatch, db: Session = Depends(get_db)) 
     note = db.get(Note, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    if payload.title is not None:
-        note.title = payload.title
-    if payload.content is not None:
-        note.content = payload.content
-    db.add(note)
-    db.flush()
-    db.refresh(note)
-    return NoteRead.model_validate(note)
+    try:
+        if payload.title is not None:
+            note.title = payload.title
+        if payload.content is not None:
+            note.content = payload.content
+        db.add(note)
+        db.flush()
+        db.refresh(note)
+        return NoteRead.model_validate(note)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update note") from exc
 
 
 @router.get("/{note_id}", response_model=NoteRead)
@@ -64,5 +73,19 @@ def get_note(note_id: int, db: Session = Depends(get_db)) -> NoteRead:
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     return NoteRead.model_validate(note)
+
+
+@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_note(note_id: int, db: Session = Depends(get_db)) -> Response:
+    note = db.get(Note, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    try:
+        db.delete(note)
+        db.flush()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete note") from exc
 
 
