@@ -6,11 +6,22 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Note
+from ..models import Note, Notebook
 from ..schemas import NoteCreate, NotePatch, NoteRead
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 ALLOWED_SORT_FIELDS = {"id", "title", "created_at", "updated_at"}
+DEFAULT_NOTEBOOK_NAME = "General"
+
+
+def _get_or_create_default_notebook(db: Session) -> Notebook:
+    notebook = db.execute(select(Notebook).where(Notebook.name == DEFAULT_NOTEBOOK_NAME)).scalar_one_or_none()
+    if notebook:
+        return notebook
+    notebook = Notebook(name=DEFAULT_NOTEBOOK_NAME)
+    db.add(notebook)
+    db.flush()
+    return notebook
 
 
 @router.get("/", response_model=list[NoteRead])
@@ -38,7 +49,13 @@ def list_notes(
 @router.post("/", response_model=NoteRead, status_code=201)
 def create_note(payload: NoteCreate, db: Session = Depends(get_db)) -> NoteRead:
     try:
-        note = Note(title=payload.title, content=payload.content)
+        notebook_id = payload.notebook_id
+        if notebook_id is None:
+            notebook_id = _get_or_create_default_notebook(db).id
+        elif not db.get(Notebook, notebook_id):
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        note = Note(title=payload.title, content=payload.content, notebook_id=notebook_id)
         db.add(note)
         db.flush()
         db.refresh(note)
@@ -58,6 +75,11 @@ def patch_note(note_id: int, payload: NotePatch, db: Session = Depends(get_db)) 
             note.title = payload.title
         if payload.content is not None:
             note.content = payload.content
+        if payload.notebook_id is not None:
+            notebook = db.get(Notebook, payload.notebook_id)
+            if not notebook:
+                raise HTTPException(status_code=404, detail="Notebook not found")
+            note.notebook_id = notebook.id
         db.add(note)
         db.flush()
         db.refresh(note)

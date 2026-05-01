@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 # 从上级包的db模块导入数据库会话依赖函�?
 from ..db import get_db
 # 从上级包的models模块导入ActionItem数据库模型类
-from ..models import ActionItem
+from ..models import ActionItem, Note
 # 从上级包的schemas模块导入ActionItem的创建、部分更新、读取数据模�?
 from ..schemas import ActionItemCreate, ActionItemPatch, ActionItemRead
 
@@ -29,6 +29,7 @@ def list_items(
     db: Session = Depends(get_db),
     # 可选查询参数：筛选是否完成的任务
     completed: Optional[bool] = None,
+    note_id: Optional[int] = None,
     # 分页参数：跳过前N条数据，默认0
     skip: int = Query(0, ge=0),
     # 分页参数：限制返回条数，默认50，最大不超过200
@@ -41,6 +42,8 @@ def list_items(
     # 如果传入了completed参数，添加筛选条�?
     if completed is not None:
         stmt = stmt.where(ActionItem.completed.is_(completed))
+    if note_id is not None:
+        stmt = stmt.where(ActionItem.note_id == note_id)
 
     # 去除排序字段前的-符号，获取纯字段�?
     sort_field = sort.lstrip("-")
@@ -62,8 +65,10 @@ def list_items(
 # 定义创建任务的接口函数，接收创建数据模型和数据库会话
 def create_item(payload: ActionItemCreate, db: Session = Depends(get_db)) -> ActionItemRead:
     try:
+        if payload.note_id is not None and not db.get(Note, payload.note_id):
+            raise HTTPException(status_code=404, detail="Note not found")
         # 创建ActionItem实例，描述来自请求体，默认未完成
-        item = ActionItem(description=payload.description, completed=False)
+        item = ActionItem(description=payload.description, completed=False, note_id=payload.note_id)
         # 将新对象添加到数据库会话
         db.add(item)
         # 刷新会话，同步数据库状态（不提交事务）
@@ -118,6 +123,10 @@ def patch_item(item_id: int, payload: ActionItemPatch, db: Session = Depends(get
         # 如果请求体传入了完成状态，更新完成状�?
         if payload.completed is not None:
             item.completed = payload.completed
+        if payload.note_id is not None:
+            if not db.get(Note, payload.note_id):
+                raise HTTPException(status_code=404, detail="Note not found")
+            item.note_id = payload.note_id
         # 保存修改到会�?
         db.add(item)
         # 同步数据�?

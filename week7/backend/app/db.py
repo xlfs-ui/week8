@@ -56,3 +56,45 @@ def apply_seed_if_needed() -> None:
                     conn.execute(text(statement))
 
 
+def migrate_schema_if_needed() -> None:
+    """
+    Lightweight SQLite migration for week7 model changes.
+
+    Keep this idempotent so startup can run it safely.
+    """
+    with engine.begin() as conn:
+        # Ensure new parent table exists.
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS notebooks (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT NOT NULL UNIQUE,
+                  created_at DATETIME DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
+                  updated_at DATETIME DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(text("INSERT OR IGNORE INTO notebooks (id, name) VALUES (1, 'General')"))
+
+        notes_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(notes)")).fetchall()
+        }
+        if "notebook_id" not in notes_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE notes ADD COLUMN notebook_id INTEGER REFERENCES notebooks(id) DEFAULT 1"
+                )
+            )
+        conn.execute(text("UPDATE notes SET notebook_id = 1 WHERE notebook_id IS NULL"))
+
+        action_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(action_items)")).fetchall()
+        }
+        if "note_id" not in action_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE action_items ADD COLUMN note_id INTEGER REFERENCES notes(id)"
+                )
+            )

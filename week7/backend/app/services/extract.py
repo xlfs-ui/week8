@@ -1,4 +1,3 @@
-extract_action_items 完整函数（每行带注释）
 import re
 # 导入正则表达式模块re，用于文本匹配、分割和替换操作
 

@@ -11,8 +11,18 @@
       <h1>Modern Software Dev Starter (Week 7)</h1>
 
       <section>
+        <h2>Notebooks</h2>
+        <form id="notebook-form">
+          <input id="notebook-name" placeholder="Notebook name" required />
+          <button type="submit">Create notebook</button>
+        </form>
+        <ul id="notebooks"></ul>
+      </section>
+
+      <section>
         <h2>Notes</h2>
         <form id="note-form">
+          <select id="note-notebook"></select>
           <input id="note-title" placeholder="Title" required />
           <input id="note-content" placeholder="Content" required />
           <button type="submit">Add</button>
@@ -27,6 +37,7 @@
       <section>
         <h2>Action Items</h2>
         <form id="action-form">
+          <select id="action-note"></select>
           <input id="action-desc" placeholder="Description" required />
           <button type="submit">Add</button>
         </form>

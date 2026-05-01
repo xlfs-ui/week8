@@ -1,109 +1,94 @@
+# 导入日期时间模块，用于记录创建/更新时间
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+# 从 SQLAlchemy 导入数据库字段类型（ORM 映射工具）
+# Boolean: 布尔类型（是/否）
+# Column: 定义数据库表的一列
+# DateTime: 日期时间类型
+# ForeignKey: 外键，用于建立表与表之间的关系
+# Integer: 整数类型（常用于ID）
+# String: 字符串类型
+# Text: 长文本类型
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 
+# 导入 ORM 基类和关系定义工具
+# declarative_base: 创建数据库模型的基类
+# relationship: 定义表与表之间的关联关系（一对多、多对一）
+from sqlalchemy.orm import declarative_base, relationship
 
-class NoteCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    content: str = Field(min_length=1, max_length=5000)
+# 创建 SQLAlchemy ORM 基类，所有数据库模型都要继承这个类
+Base = declarative_base()
 
-    @field_validator("title", "content", mode="before")
-    @classmethod
-    def strip_required_text(cls, value: str) -> str:
-        return value.strip() if isinstance(value, str) else value
+# 时间戳混入类：给所有表自动添加创建时间、更新时间
+# 被其他类继承，避免重复写时间字段
+class TimestampMixin:
+    # 创建时间：默认值为当前 UTC 时间，不允许为空
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # 更新时间：创建时自动设为当前时间，更新时自动刷新为最新时间
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
+# 笔记本表模型：对应数据库表 notebooks
+class Notebook(Base, TimestampMixin):
+    # 指定数据库表名
+    __tablename__ = "notebooks"
 
-class NoteRead(BaseModel):
-    id: int
-    title: str
-    content: str
-    created_at: datetime
-    updated_at: datetime
+    # 主键ID，自增，建立索引加快查询速度
+    id = Column(Integer, primary_key=True, index=True)
+    # 笔记本名称，最长120字符，不允许为空，不能重复，建立索引
+    name = Column(String(120), nullable=False, unique=True, index=True)
 
-    class Config:
-        from_attributes = True
+    # 与笔记 Note 建立一对多关系
+    # 一个笔记本 包含 多个笔记
+    notes = relationship(
+        "Note",                  # 关联的表模型
+        back_populates="notebook",# 反向关联字段
+        cascade="all, delete-orphan", # 级联操作：删除笔记本时，自动删除所有笔记
+        passive_deletes=True,    # 数据库级联删除
+    )
 
+# 笔记表模型：对应数据库表 notes
+class Note(Base, TimestampMixin):
+    __tablename__ = "notes"
 
-class NotePatch(BaseModel):
-    title: str | None = None
-    content: str | None = None
+    # 笔记主键ID
+    id = Column(Integer, primary_key=True, index=True)
+    # 笔记标题，最长200字符，不允许为空
+    title = Column(String(200), nullable=False)
+    # 笔记内容，长文本，不允许为空
+    content = Column(Text, nullable=False)
+    # 外键：关联到所属笔记本的 ID
+    notebook_id = Column(
+        Integer,
+        ForeignKey("notebooks.id", ondelete="CASCADE"), # 删除笔记本时，笔记一并删除
+        nullable=False,  # 每篇笔记必须属于某个笔记本
+        index=True,      # 加索引，查询更快
+    )
 
-    @field_validator("title", "content", mode="before")
-    @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if isinstance(value, str):
-            return value.strip()
-        return value
+    # 反向关联：每篇笔记属于哪个笔记本
+    notebook = relationship("Notebook", back_populates="notes")
+    # 一对多关系：一篇笔记 可以生成 多个行动项
+    action_items = relationship(
+        "ActionItem",
+        back_populates="note",
+        cascade="all, delete-orphan",  # 删除笔记时，自动删除对应的行动项
+        passive_deletes=True,
+    )
 
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 200:
-            raise ValueError("title must be at most 200 characters")
-        if value == "":
-            raise ValueError("title must not be empty")
-        return value
+# 行动项表模型：对应数据库表 action_items
+class ActionItem(Base, TimestampMixin):
+    __tablename__ = "action_items"
 
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 5000:
-            raise ValueError("content must be at most 5000 characters")
-        if value == "":
-            raise ValueError("content must not be empty")
-        return value
+    # 行动项主键ID
+    id = Column(Integer, primary_key=True, index=True)
+    # 行动项描述（代办内容），长文本，不能为空
+    description = Column(Text, nullable=False)
+    # 是否完成：布尔值，默认未完成（False）
+    completed = Column(Boolean, default=False, nullable=False)
+    # 外键：关联到所属笔记 ID
+    # 允许为空：表示行动项可以不属于任何笔记
+    note_id = Column(Integer, ForeignKey("notes.id", ondelete="CASCADE"), nullable=True, index=True)
 
-    @model_validator(mode="after")
-    def require_at_least_one_field(self) -> "NotePatch":
-        if self.title is None and self.content is None:
-            raise ValueError("at least one field is required")
-        return self
-
-
-class ActionItemCreate(BaseModel):
-    description: str = Field(min_length=1, max_length=1000)
-
-    @field_validator("description", mode="before")
-    @classmethod
-    def strip_description(cls, value: str) -> str:
-        return value.strip() if isinstance(value, str) else value
-
-
-class ActionItemRead(BaseModel):
-    id: int
-    description: str
-    completed: bool
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class ActionItemPatch(BaseModel):
-    description: str | None = None
-    completed: bool | None = None
-
-    @field_validator("description", mode="before")
-    @classmethod
-    def strip_optional_description(cls, value: str | None) -> str | None:
-        if isinstance(value, str):
-            return value.strip()
-        return value
-
-    @field_validator("description")
-    @classmethod
-    def validate_description(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 1000:
-            raise ValueError("description must be at most 1000 characters")
-        if value == "":
-            raise ValueError("description must not be empty")
-        return value
-
-    @model_validator(mode="after")
-    def require_at_least_one_field(self) -> "ActionItemPatch":
-        if self.description is None and self.completed is None:
-            raise ValueError("at least one field is required")
-        return self
-
-
+    # 反向关联：每个行动项属于哪篇笔记
+    note = relationship("Note", back_populates="action_items")
