@@ -19,7 +19,7 @@ class NotebookCreate(_NonEmptyStringModel):
         self.name = self._validate_required_text(self.name, "name")
         return self
 
-
+#读笔记本
 class NotebookRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
