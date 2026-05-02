@@ -1,4 +1,4 @@
-# Week 7 – Exploring AI Code Review Using Graphite
+# Week 8 – Exploring AI Code Review Using Graphite(update)
 
 ## Assignment Overview
 In this assignment, you will practice agent-driven development and AI-assisted code review on a more advanced codebase. You will implement the tasks in `week7/docs/TASKS.md`, validate your work with tests and manual review, and compare your own review notes with AI-generated code reviews.
