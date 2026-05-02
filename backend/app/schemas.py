@@ -10,7 +10,7 @@ class _NonEmptyStringModel(BaseModel):
             raise ValueError(f"{field_name} must not be blank")
         return value
 
-
+#创建笔记本
 class NotebookCreate(_NonEmptyStringModel):
     name: str
 
