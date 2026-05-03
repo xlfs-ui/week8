@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepSeek Chat</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <h1>Chat</h1>
+        <p class="muted">HTTP to this FastAPI app; the backend calls DeepSeek (deepseek-v4 family).</p>
+      </header>
+
+      <section id="log" class="log" aria-live="polite"></section>
+
+      <form id="form" class="composer">
+        <label class="sr-only" for="input">Message</label>
+        <textarea id="input" rows="2" placeholder="Type a message. Enter to send, Shift+Enter for newline"></textarea>
+        <div class="row">
+          <button type="submit" id="send">Send</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </form>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

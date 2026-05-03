@@ -10,7 +10,7 @@ class _NonEmptyStringModel(BaseModel):
             raise ValueError(f"{field_name} must not be blank")
         return value
 
-
+#创建笔记本
 class NotebookCreate(_NonEmptyStringModel):
     name: str
 
@@ -19,7 +19,7 @@ class NotebookCreate(_NonEmptyStringModel):
         self.name = self._validate_required_text(self.name, "name")
         return self
 
-
+#读笔记本
 class NotebookRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
